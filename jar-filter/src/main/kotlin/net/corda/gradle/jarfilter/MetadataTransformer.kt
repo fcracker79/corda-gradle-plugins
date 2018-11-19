@@ -1,5 +1,7 @@
 package net.corda.gradle.jarfilter
 
+import kotlinx.metadata.*
+import kotlinx.metadata.Flag.Constructor.IS_PRIMARY
 import kotlinx.metadata.internal.metadata.ProtoBuf
 import kotlinx.metadata.internal.metadata.deserialization.Flags.*
 import kotlinx.metadata.internal.metadata.deserialization.NameResolver
@@ -11,6 +13,9 @@ import kotlinx.metadata.internal.metadata.jvm.deserialization.JvmProtoBufUtil
 import kotlinx.metadata.internal.metadata.jvm.deserialization.JvmProtoBufUtil.EXTENSION_REGISTRY
 import kotlinx.metadata.internal.protobuf.ExtensionRegistryLite
 import kotlinx.metadata.internal.protobuf.MessageLite
+import kotlinx.metadata.jvm.JvmConstructorExtensionVisitor
+import kotlinx.metadata.jvm.JvmFunctionExtensionVisitor
+import kotlinx.metadata.jvm.JvmMethodSignature
 import org.gradle.api.logging.Logger
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -225,55 +230,61 @@ internal abstract class MetadataTransformer<out T : MessageLite>(
  * a [ProtoBuf.Class] object in its [data1][kotlin.Metadata.d1] field.
  */
 internal class ClassMetadataTransformer(
-    logger: Logger,
-    deletedFields: Collection<FieldElement>,
-    deletedFunctions: Collection<MethodElement>,
-    deletedConstructors: Collection<MethodElement>,
-    deletedNestedClasses: Collection<String>,
-    deletedClasses: Collection<String>,
-    handleExtraMethod: (MethodElement) -> Unit,
-    data1: List<String>,
-    data2: List<String>
-) : MetadataTransformer<ProtoBuf.Class>(
-    logger,
-    deletedFields,
-    deletedFunctions,
-    deletedConstructors,
-    deletedNestedClasses,
-    deletedClasses,
-    handleExtraMethod,
-    data1,
-    data2,
-    ProtoBuf.Class::parseFrom
-) {
-    override val typeTable = TypeTable(message.typeTable)
-    override val className = nameResolver.getClassInternalName(message.fqName)
-    override val nestedClassNames = mutableList(message.nestedClassNameList)
-    override val sealedSubclassNames = mutableList(message.sealedSubclassFqNameList)
-    override val properties = mutableList(message.propertyList)
-    override val functions = mutableList(message.functionList)
-    override val constructors = mutableList(message.constructorList)
-    override val typeAliases = mutableList(message.typeAliasList)
+    private val logger: Logger,
+    private val deletedFields: Collection<FieldElement>,
+    private val deletedFunctions: Collection<MethodElement>,
+    private val deletedConstructors: Collection<MethodElement>,
+    private val deletedNestedClasses: Collection<String>,
+    private val deletedClasses: Collection<String>,
+    private val handleExtraMethod: (MethodElement) -> Unit,
+    cv: KmClassVisitor?
+) : KmClassVisitor(cv) {
+    private var className: ClassName = ""
 
-    override fun rebuild(): ProtoBuf.Class = message.toBuilder().apply {
-        clearConstructor().addAllConstructor(constructors)
+    override fun visit(flags: Flags, name: ClassName) {
+        className = name
+        super.visit(flags, name)
+    }
 
-        if (nestedClassNames.size != nestedClassNameCount) {
-            clearNestedClassName().addAllNestedClassName(nestedClassNames)
+    override fun visitConstructor(flags: Flags): KmConstructorVisitor? {
+        val cv = super.visitConstructor(flags) ?: return null
+        return ConstructorFilter(logger, className, deletedConstructors, flags, cv)
+    }
+
+    override fun visitFunction(flags: Flags, name: String): KmFunctionVisitor? {
+        val fv = super.visitFunction(flags, name) ?: return null
+        return FunctionFilter(logger, deletedFunctions, fv)
+    }
+
+    override fun visitProperty(flags: Flags, name: String, getterFlags: Flags, setterFlags: Flags): KmPropertyVisitor? {
+        return super.visitProperty(flags, name, getterFlags, setterFlags)
+    }
+
+    override fun visitNestedClass(name: String) {
+        if (deletedNestedClasses.contains(name)) {
+            logger.info("-- removing nested class: {}", name)
+        } else {
+            super.visitNestedClass(name)
         }
-        if (functions.size != functionCount) {
-            clearFunction().addAllFunction(functions)
+    }
+
+    override fun visitSealedSubclass(name: ClassName) {
+        val subclassName = name.replace('.', '$')
+        if (deletedClasses.contains(subclassName)) {
+            logger.info("-- removing sealed subclass: {}", subclassName)
+        } else {
+            super.visitSealedSubclass(name)
         }
-        if (properties.size != propertyCount) {
-            clearProperty().addAllProperty(properties)
+    }
+
+    override fun visitTypeAlias(flags: Flags, name: String): KmTypeAliasVisitor? {
+        return if (deletedFields.any { it.name == name && it.extension == "()" }) {
+            logger.info("-- removing typealias: {}", name)
+            null
+        } else {
+            super.visitTypeAlias(flags, name)
         }
-        if (typeAliases.size != typeAliasCount) {
-            clearTypeAlias().addAllTypeAlias(typeAliases)
-        }
-        if (sealedSubclassNames.size != sealedSubclassFqNameCount) {
-            clearSealedSubclassFqName().addAllSealedSubclassFqName(sealedSubclassNames)
-        }
-    }.build()
+    }
 }
 
 /**
@@ -281,38 +292,100 @@ internal class ClassMetadataTransformer(
  * a [ProtoBuf.Package] object in its [data1][kotlin.Metadata.d1] field.
  */
 internal class PackageMetadataTransformer(
-    logger: Logger,
-    deletedFields: Collection<FieldElement>,
-    deletedFunctions: Collection<MethodElement>,
-    handleExtraMethod: (MethodElement) -> Unit,
-    data1: List<String>,
-    data2: List<String>
-) : MetadataTransformer<ProtoBuf.Package>(
-    logger,
-    deletedFields,
-    deletedFunctions,
-    emptyList(),
-    emptyList(),
-    emptyList(),
-    handleExtraMethod,
-    data1,
-    data2,
-    ProtoBuf.Package::parseFrom
-) {
-    override val typeTable = TypeTable(message.typeTable)
-    override val properties = mutableList(message.propertyList)
-    override val functions = mutableList(message.functionList)
-    override val typeAliases = mutableList(message.typeAliasList)
+    private val logger: Logger,
+    private val deletedFields: Collection<FieldElement>,
+    private val deletedFunctions: Collection<MethodElement>,
+    private val handleExtraMethod: (MethodElement) -> Unit,
+    pv: KmPackageVisitor?
+) : KmPackageVisitor(pv) {
+    override fun visitFunction(flags: Flags, name: String): KmFunctionVisitor? {
+        val fv = super.visitFunction(flags, name) ?: return null
+        return FunctionFilter(logger, deletedFunctions, fv)
+    }
 
-    override fun rebuild(): ProtoBuf.Package = message.toBuilder().apply {
-        if (functions.size != functionCount) {
-            clearFunction().addAllFunction(functions)
+    override fun visitProperty(flags: Flags, name: String, getterFlags: Flags, setterFlags: Flags): KmPropertyVisitor? {
+        return super.visitProperty(flags, name, getterFlags, setterFlags)
+    }
+
+    override fun visitTypeAlias(flags: Flags, name: String): KmTypeAliasVisitor? {
+        return if (deletedFields.any { it.name == name && it.extension == "()" }) {
+            logger.info("-- removing typealias: {}", name)
+            null
+        } else {
+            super.visitTypeAlias(flags, name)
         }
-        if (properties.size != propertyCount) {
-            clearProperty().addAllProperty(properties)
+    }
+}
+
+private class ConstructorFilter(
+    private val logger: Logger,
+    private val className: ClassName,
+    private val deletedConstructors: Collection<MethodElement>,
+    private val flags: Flags,
+    cv: KmConstructorVisitor
+) : KmConstructorVisitor(cv) {
+    /*
+     * Constructors with the default parameter marker are synthetic and DO NOT have
+     * entries in the metadata. So we construct an element for the "primary" one
+     * that it was synthesised for, and which we DO expect to find.
+     */
+    private val deletedPrimary = deletedConstructors.map(MethodElement::asKotlinNonDefaultConstructor).firstOrNull()
+    private var isDeleted: Boolean = false
+
+    override fun visitExtensions(type: KmExtensionType): KmConstructorExtensionVisitor? {
+        val cev = (super.visitExtensions(type) as? JvmConstructorExtensionVisitor) ?: return null
+        return object : JvmConstructorExtensionVisitor(cev) {
+            override fun visit(desc: JvmMethodSignature?) {
+                val method = (desc ?: return).toMethodElement()
+                if (deletedConstructors.contains(method)) {
+                    if (IS_PRIMARY(flags)) {
+                        logger.warn("Removing primary constructor: {}{}", className, method.descriptor)
+                    } else {
+                        logger.info("-- removing constructor: {}", method.signature)
+                    }
+                    isDeleted = true
+                } else if (method == deletedPrimary) {
+                    logger.info("-- removing default parameter values: {}", method.signature)
+                }
+            }
         }
-        if (typeAliases.size != typeAliasCount) {
-            clearTypeAlias().addAllTypeAlias(typeAliases)
+    }
+
+    override fun visitValueParameter(flags: Flags, name: String): KmValueParameterVisitor? {
+        logger.info(">> PARAMETER NAME='{}'", name)
+        return super.visitValueParameter(flags, name)
+    }
+
+    override fun visitEnd() {
+        if (!isDeleted) {
+            super.visitEnd()
         }
-    }.build()
+    }
+}
+
+private class FunctionFilter(
+    private val logger: Logger,
+    private val deletedFunctions: Collection<MethodElement>,
+    fv: KmFunctionVisitor
+) : KmFunctionVisitor(fv) {
+    private var isDeleted: Boolean = false
+
+    override fun visitExtensions(type: KmExtensionType): KmFunctionExtensionVisitor? {
+        val fev = (super.visitExtensions(type) as? JvmFunctionExtensionVisitor) ?: return null
+        return object : JvmFunctionExtensionVisitor(fev) {
+            override fun visit(desc: JvmMethodSignature?) {
+                val method = (desc ?: return).toMethodElement()
+                if (deletedFunctions.contains(method)) {
+                    logger.info("-- removing function: {}", method.signature)
+                    isDeleted = true
+                }
+            }
+        }
+    }
+
+    override fun visitEnd() {
+        if (!isDeleted) {
+            super.visitEnd()
+        }
+    }
 }
