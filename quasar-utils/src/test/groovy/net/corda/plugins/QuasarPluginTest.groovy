@@ -49,10 +49,10 @@ configs.collectEntries { [(it.name):it] }.forEach { name, files ->
 }
 """
         assertThat(output).containsOnlyOnce(
-            "quasar: quasar-core-$QUASAR_VERSION.jar".toString(),
-            "cordaRuntime: quasar-core-$QUASAR_VERSION.jar".toString(),
-            "compileOnly: quasar-core-$QUASAR_VERSION.jar".toString(),
-            "compileClasspath: quasar-core-$QUASAR_VERSION.jar".toString()
+            "quasar: quasar-core-${QUASAR_VERSION}.jar".toString(),
+            "cordaRuntime: quasar-core-${QUASAR_VERSION}.jar".toString(),
+            "compileOnly: quasar-core-${QUASAR_VERSION}.jar".toString(),
+            "compileClasspath: quasar-core-${QUASAR_VERSION}.jar".toString()
         )
     }
 
@@ -93,10 +93,10 @@ configs.collectEntries { [(it.name):it] }.forEach { name, files ->
 }
 """
         assertThat(output).containsOnlyOnce(
-            "quasar: quasar-core-$quasarVersion.jar".toString(),
-            "cordaRuntime: quasar-core-$quasarVersion.jar".toString(),
-            "compileOnly: quasar-core-$quasarVersion.jar".toString(),
-            "compileClasspath: quasar-core-$quasarVersion.jar".toString()
+            "quasar: quasar-core-${quasarVersion}.jar".toString(),
+            "cordaRuntime: quasar-core-${quasarVersion}.jar".toString(),
+            "compileOnly: quasar-core-${quasarVersion}.jar".toString(),
+            "compileClasspath: quasar-core-${quasarVersion}.jar".toString()
         )
     }
 

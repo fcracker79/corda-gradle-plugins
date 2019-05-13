@@ -27,7 +27,9 @@ class QuasarPlugin implements Plugin<Project> {
         def quasarGroup = rootProject.hasProperty("quasar_group") ? rootProject.ext.quasar_group : defaultGroup
         def quasarVersion = rootProject.hasProperty("quasar_version") ? rootProject.ext.quasar_version : defaultVersion
         def quasarDependency = "${quasarGroup}:quasar-core:${quasarVersion}"
-        project.dependencies.add("quasar", quasarDependency)
+        project.dependencies.add("quasar", quasarDependency) {
+            it.transitive = false
+        }
         project.dependencies.add("cordaRuntime", quasarDependency) {
             // Ensure that Quasar's transitive dependencies are available at runtime (only).
             it.transitive = true
@@ -37,7 +39,6 @@ class QuasarPlugin implements Plugin<Project> {
         def quasarFile = project.configurations.quasar.getFiles().find {
             it.name.contains("quasar-core-${quasarVersion}.jar".toString())
         }
-        println("************************ $quasarFile")
         project.tasks.withType(Test) {
             jvmArgs "-javaagent:$quasarFile"
             jvmArgs "-Dco.paralleluniverse.fibers.verifyInstrumentation"
