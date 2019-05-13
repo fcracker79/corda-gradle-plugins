@@ -155,8 +155,6 @@ class CordappPlugin @Inject constructor(private val objects: ObjectFactory): Plu
     private fun hardCodedExcludes(): Set<Pair<String, String>>{
         val excludes = setOf(
             ("org.jetbrains.kotlin"  to "kotlin-stdlib"),
-            ("org.jetbrains.kotlin" to "kotlin-stdlib-jre8"),
-            ("org.jetbrains.kotlin" to "kotlin-stdlib-jdk8"),
             ("org.jetbrains.kotlin" to "kotlin-reflect"),
             ("co.paralleluniverse" to "quasar-core")
         )

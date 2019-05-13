@@ -46,7 +46,7 @@ dependencies {
     // Gradle plugins written in Kotlin will always use Gradle's
     // own provided Kotlin libraries at runtime. So ensure that
     // we don't add Kotlin as a dependency in our published POM.
-    compileOnly "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+    compileOnly "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_stdlib_version"
     implementation("org.jetbrains.kotlinx:kotlinx-metadata-jvm:$kotlin_metadata_version") {
         exclude group: 'org.jetbrains.kotlin'
     }

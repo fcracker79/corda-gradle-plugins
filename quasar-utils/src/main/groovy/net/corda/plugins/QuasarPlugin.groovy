@@ -12,7 +12,7 @@ import org.gradle.api.tasks.JavaExec
 class QuasarPlugin implements Plugin<Project> {
 
     static final defaultGroup = "co.paralleluniverse"
-    static final defaultVersion = "0.7.10"
+    static final defaultVersion = "0.8.0"
 
     @Override
     void apply(Project project) {
@@ -26,7 +26,7 @@ class QuasarPlugin implements Plugin<Project> {
         def rootProject = project.rootProject
         def quasarGroup = rootProject.hasProperty("quasar_group") ? rootProject.ext.quasar_group : defaultGroup
         def quasarVersion = rootProject.hasProperty("quasar_version") ? rootProject.ext.quasar_version : defaultVersion
-        def quasarDependency = "${quasarGroup}:quasar-core:${quasarVersion}:jdk8@jar"
+        def quasarDependency = "${quasarGroup}:quasar-core:${quasarVersion}"
         project.dependencies.add("quasar", quasarDependency)
         project.dependencies.add("cordaRuntime", quasarDependency) {
             // Ensure that Quasar's transitive dependencies are available at runtime (only).
@@ -34,9 +34,12 @@ class QuasarPlugin implements Plugin<Project> {
         }
         // This adds Quasar to the compile classpath WITHOUT any of its transitive dependencies.
         project.dependencies.add("compileOnly", quasar)
-
+        def quasarFile = project.configurations.quasar.getFiles().find {
+            it.name.contains("quasar-core-${quasarVersion}.jar".toString())
+        }
+        println("************************ $quasarFile")
         project.tasks.withType(Test) {
-            jvmArgs "-javaagent:${project.configurations.quasar.singleFile}"
+            jvmArgs "-javaagent:$quasarFile"
             jvmArgs "-Dco.paralleluniverse.fibers.verifyInstrumentation"
         }
         project.tasks.withType(JavaExec) {
